@@ -118,7 +118,7 @@ input,select{padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:
 <script>
 /* ============ KONFIGURASI ============ */
 // Tempel URL Web App Google Apps Script (berakhiran /exec) di sini:
-const SCRIPT_URL='https://script.google.com/macros/s/AKfycbxEUpja_DM6abWiEV4M-pfSDb_jFTqNKlaiJY2Jx-GxvoJmH8llRrE4gIKbe_I3p7k7nw/exec';
+const SCRIPT_URL='GANTI_DENGAN_URL_WEB_APP_APPS_SCRIPT';
 
 const K='absqr_';
 const EYE='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7a3cff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -189,17 +189,32 @@ function togglePw(){const i=$('lp'),s=i.type==='password';i.type=s?'text':'passw
 async function login(){
   const u=$('lu').value.trim(),p=$('lp').value;if(!u||!p){$('loginErr').textContent='Isi username dan password.';return}
   if(!urlOK()){$('loginErr').textContent='URL Apps Script belum dipasang di index.html.';return}
-  $('btnLogin').disabled=true;$('loginErr').textContent='Memeriksa...';
+  // Perangkat ini pernah login dengan akun yang sama: masuk langsung, verifikasi & sinkron di latar belakang
+  const old=JSON.parse(localStorage.getItem(K+'me')||'null');
+  if(old&&old.role&&old.u===u&&old.p===p){me=old;enter();refresh(true);return}
+  // Login pertama di perangkat ini: cukup 1 permintaan ringan, data diambil di latar belakang
+  $('btnLogin').disabled=true;$('loginErr').textContent='Memeriksa akun...';
   try{
     me={u,p};const r=await api({action:'login'});
     if(!r.ok){me=null;$('loginErr').textContent=r.error||'Login gagal';return}
     me={u,p,role:r.user.role,nama:r.user.nama};localStorage.setItem(K+'me',JSON.stringify(me));
-    $('loginErr').textContent='Mengambil data...';await pull();enter();
-  }catch(e){
-    const old=JSON.parse(localStorage.getItem(K+'me')||'null');
-    if(old&&old.u===u&&old.p===p){me=old;enter();toast('Mode offline: memakai data tersimpan.',false)}
-    else{me=null;$('loginErr').textContent='Tidak dapat terhubung. Periksa internet / URL Apps Script.'}
-  }finally{$('btnLogin').disabled=false}
+    enter();toast('Memuat data...');refresh(false);
+  }catch(e){me=null;$('loginErr').textContent='Tidak dapat terhubung. Periksa internet / URL Apps Script.'}
+  finally{$('btnLogin').disabled=false}
+}
+// Sinkron di latar belakang (tidak menghalangi layar). verify=true: pastikan password masih berlaku.
+let refreshing=false;
+async function refresh(verify){
+  if(refreshing||!navigator.onLine||!urlOK())return;refreshing=true;
+  try{
+    if(verify){const r=await api({action:'login'});
+      if(!r.ok&&r.error){alert('Sesi tidak berlaku: '+r.error+'\nSilakan login ulang.');localStorage.removeItem(K+'me');location.reload();return}}
+    if(await pull()){badge();
+      if(!document.querySelector('.modal')&&!scanStream){if(['dashboard','rekap','laporan','murid','kelas'].includes(page))show();else if(page==='absensi'&&$('a_k')&&!$('a_k').options.length)show()}
+      else if(page==='absensi'&&$('a_k'))lists();
+    }
+  }catch(e){}
+  refreshing=false;
 }
 function logout(){if(S.queue.length&&!confirm('Masih ada '+S.queue.length+' data belum tersinkron. Tetap keluar?'))return;stopScan();localStorage.removeItem(K+'me');location.reload()}
 function enter(){$('loginPage').classList.add('hidden');$('app').classList.remove('hidden');$('userLabel').textContent=me.nama;$('roleLabel').textContent='('+me.role+')';buildNav();go('dashboard');badge()}
@@ -458,8 +473,7 @@ function delUser(id){if(confirm('Hapus pengguna ini?')){del('users',[id]);show()
 /* ============ MULAI ============ */
 $('eye').innerHTML=EYE;
 if(S.settings.nama)$('loginNama').textContent=S.settings.nama.toUpperCase();
-if(me&&me.role)enter();
-if(me&&me.role)pull().then(()=>{badge();show()});
+if(me&&me.role){enter();refresh(true)}
 </script>
 </body>
 </html>
